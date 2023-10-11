@@ -3,7 +3,7 @@ from mmdet.core.bbox.match_costs.builder import MATCH_COST
 import torch.nn.functional as F
 
 
-@MATCH_COST.register_module()
+# @MATCH_COST.register_module()
 class BBox3DL1Cost(object):
     """BBox3DL1Cost.
      Args:

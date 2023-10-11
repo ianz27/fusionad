@@ -99,7 +99,8 @@ class ClipMatcher(nn.Module):
         self.weight_dict = weight_dict
         self.loss_past_traj_weight = loss_past_traj_weight
         # self.losses = ['labels', 'boxes', 'cardinality']
-        self.losses = ["labels", "boxes", "past_trajs"]
+        # self.losses = ["labels", "boxes", "past_trajs"]
+        self.losses = ["labels", "boxes"]
         self.focal_loss = True
         self.losses_dict = {}
         self._current_frame_idx = 0
@@ -183,55 +184,55 @@ class ClipMatcher(nn.Module):
             "labels": self.loss_labels,
             "cardinality": self.loss_cardinality,
             "boxes": self.loss_boxes,
-            "past_trajs": self.loss_past_trajs,
+            # "past_trajs": self.loss_past_trajs,
         }
         assert loss in loss_map, f"do you really want to compute {loss} loss?"
         return loss_map[loss](outputs, gt_instances, indices, **kwargs)
 
-    def loss_past_trajs(self, outputs, gt_instances: List[Instances],
-                   indices: List[tuple]):
-        # We ignore the regression loss of the track-disappear slots.
-        # TODO: Make this filter process more elegant.
-        filtered_idx = []
-        for src_per_img, tgt_per_img in indices:
-            keep = tgt_per_img != -1
-            filtered_idx.append((src_per_img[keep], tgt_per_img[keep]))
-        indices = filtered_idx
-        idx = self._get_src_permutation_idx(indices)
-        src_trajs = outputs["pred_past_trajs"][idx]
-        target_trajs = torch.cat(
-            [
-                gt_per_img.past_traj[i]
-                for gt_per_img, (_, i) in zip(gt_instances, indices)
-            ],
-            dim=0,
-        )
-        target_trajs_mask = torch.cat(
-            [
-                gt_per_img.past_traj_mask[i]
-                for gt_per_img, (_, i) in zip(gt_instances, indices)
-            ],
-            dim=0,
-        )
+    # def loss_past_trajs(self, outputs, gt_instances: List[Instances],
+    #                indices: List[tuple]):
+    #     # We ignore the regression loss of the track-disappear slots.
+    #     # TODO: Make this filter process more elegant.
+    #     filtered_idx = []
+    #     for src_per_img, tgt_per_img in indices:
+    #         keep = tgt_per_img != -1
+    #         filtered_idx.append((src_per_img[keep], tgt_per_img[keep]))
+    #     indices = filtered_idx
+    #     idx = self._get_src_permutation_idx(indices)
+    #     src_trajs = outputs["pred_past_trajs"][idx]
+    #     target_trajs = torch.cat(
+    #         [
+    #             gt_per_img.past_traj[i]
+    #             for gt_per_img, (_, i) in zip(gt_instances, indices)
+    #         ],
+    #         dim=0,
+    #     )
+    #     target_trajs_mask = torch.cat(
+    #         [
+    #             gt_per_img.past_traj_mask[i]
+    #             for gt_per_img, (_, i) in zip(gt_instances, indices)
+    #         ],
+    #         dim=0,
+    #     )
 
-        # for pad target, don't calculate regression loss, judged by whether obj_id=-1
-        target_obj_ids = torch.cat(
-            [
-                gt_per_img.obj_ids[i]
-                for gt_per_img, (_, i) in zip(gt_instances, indices)
-            ],
-            dim=0,
-        )  # size(16)
-        # [num_matched]
-        mask = target_obj_ids != -1
-        loss_trajs = self.compute_past_traj_loss(src_trajs[mask], target_trajs[mask], target_trajs_mask[mask])
-        losses = {}
-        losses["loss_past_trajs"] = loss_trajs * self.loss_past_traj_weight
-        return losses
+    #     # for pad target, don't calculate regression loss, judged by whether obj_id=-1
+    #     target_obj_ids = torch.cat(
+    #         [
+    #             gt_per_img.obj_ids[i]
+    #             for gt_per_img, (_, i) in zip(gt_instances, indices)
+    #         ],
+    #         dim=0,
+    #     )  # size(16)
+    #     # [num_matched]
+    #     mask = target_obj_ids != -1
+    #     loss_trajs = self.compute_past_traj_loss(src_trajs[mask], target_trajs[mask], target_trajs_mask[mask])
+    #     losses = {}
+    #     # losses["loss_past_trajs"] = loss_trajs * self.loss_past_traj_weight
+    #     return losses
     
-    def compute_past_traj_loss(self, src, tgt, tgt_mask):
-        loss = torch.abs(src - tgt) * tgt_mask
-        return torch.sum(loss)/ (torch.sum(tgt_mask>0) + 1e-5)
+    # def compute_past_traj_loss(self, src, tgt, tgt_mask):
+    #     loss = torch.abs(src - tgt) * tgt_mask
+    #     return torch.sum(loss)/ (torch.sum(tgt_mask>0) + 1e-5)
 
     def loss_boxes(self, outputs, gt_instances: List[Instances],
                    indices: List[tuple]):
@@ -369,7 +370,7 @@ class ClipMatcher(nn.Module):
         pred_sdc_boxes_i = track_instances.pred_boxes[900:901].unsqueeze(0) 
         # -2 means the sdc query in this code
         track_instances.obj_idxes[900]=-2
-        pred_past_trajs_i = track_instances.pred_past_trajs  # predicted past trajs of i-th image.
+        # pred_past_trajs_i = track_instances.pred_past_trajs  # predicted past trajs of i-th image.
 
         obj_idxes = gt_instances_i.obj_ids
         obj_idxes_list = obj_idxes.detach().cpu().numpy().tolist()
@@ -382,7 +383,7 @@ class ClipMatcher(nn.Module):
             "pred_sdc_logits": pred_sdc_logits_i,
             "pred_boxes": pred_boxes_i.unsqueeze(0),
             "pred_sdc_boxes": pred_sdc_boxes_i,
-            "pred_past_trajs": pred_past_trajs_i.unsqueeze(0),
+            # "pred_past_trajs": pred_past_trajs_i.unsqueeze(0),
         }
         # step1. inherit and update the previous tracks.
         num_disappear_track = 0

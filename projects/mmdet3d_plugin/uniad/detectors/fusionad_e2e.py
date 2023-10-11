@@ -172,11 +172,12 @@ class FusionAD(FusionADTrack):
         losses_track = self.loss_weighted_and_prefixed(losses_track, prefix='track')
         losses.update(losses_track)
         
-        # Upsample bev for tiny version
-        outs_track = self.upsample_bev_if_tiny(outs_track)
+        # # Upsample bev for tiny version
+        # outs_track = self.upsample_bev_if_tiny(outs_track)
 
-        bev_embed = outs_track["bev_embed"]
+        # bev_embed = outs_track["bev_embed"]
         # bev_pos  = outs_track["bev_pos"]
+        bev_embed = None
         # # debug
         # print('bev_embed')
         # print(bev_embed.shape)
@@ -303,10 +304,11 @@ class FusionAD(FusionADTrack):
         result = [dict() for i in range(len(img_metas))]
         result_track = self.simple_test_track(point, img, l2g_t, l2g_r_mat, img_metas, timestamp)
 
-        # Upsample bev for tiny model        
-        result_track[0] = self.upsample_bev_if_tiny(result_track[0])
+        # # Upsample bev for tiny model        
+        # result_track[0] = self.upsample_bev_if_tiny(result_track[0])
         
-        bev_embed = result_track[0]["bev_embed"]
+        # bev_embed = result_track[0]["bev_embed"]
+        bev_embed = None
 
         if self.with_seg_head:
             result_seg =  self.seg_head.forward_test(bev_embed, gt_lane_labels, gt_lane_masks, img_metas, rescale)

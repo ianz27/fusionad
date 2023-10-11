@@ -6,7 +6,7 @@ from projects.mmdet3d_plugin.core.bbox.util import denormalize_bbox
 import numpy as np
 
 
-@BBOX_CODERS.register_module()
+# @BBOX_CODERS.register_module()
 class NMSFreeCoder(BaseBBoxCoder):
     """Bbox coder for NMS-free detector.
     Args:

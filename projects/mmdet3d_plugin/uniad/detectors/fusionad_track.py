@@ -17,7 +17,7 @@ from mmdet3d.models.detectors import CenterPoint
 from projects.mmdet3d_plugin.models.utils.grid_mask import GridMask
 from projects.mmdet3d_plugin.mmcv_custom.ops.voxel import SPConvVoxelization
 from projects.mmdet3d_plugin.models.vtransforms import LSSTransform
-from projects.mmdet3d_plugin.uniad.modules import ConvFuser
+from mmdet3d.models.modules import ConvFuser
 import copy
 import math
 import numpy as np
@@ -26,6 +26,7 @@ from mmdet.models import build_loss
 from einops import rearrange
 from mmdet.models.utils.transformer import inverse_sigmoid
 from ..dense_heads.track_head_plugin import MemoryBank, QueryInteractionModule, Instances, RuntimeTrackerBase
+
 
 @DETECTORS.register_module()
 class FusionADTrack(CenterPoint):
@@ -101,14 +102,6 @@ class FusionADTrack(CenterPoint):
             pretrained=pretrained,
         )
 
-        # vtransform
-        # self.vtransform = None
-        self.vtransform_feat_level = vtransform_feat_level
-        self.vtransform = LSSTransform(**vtransform)
-
-        # fuser
-        self.fusion_layer = ConvFuser(**fusion_layer)
-
         self.grid_mask = GridMask(
             True, True, rotate=1, offset=False, ratio=0.5, mode=1, prob=0.7
         )
@@ -175,102 +168,7 @@ class FusionADTrack(CenterPoint):
         self.l2g_r_mat = None
         self.l2g_t = None
         self.gt_iou_threshold = gt_iou_threshold
-        self.bev_h, self.bev_w = self.pts_bbox_head.bev_h, self.pts_bbox_head.bev_w
         self.freeze_bev_encoder = freeze_bev_encoder
-
-    # @auto_fp16(apply_to=('img'), out_fp32=True) 
-    # def extract_img_feat(self, img, img_metas):
-    #     """Extract features of images."""
-    #     if self.with_img_backbone and img is not None:
-    #         input_shape = img.shape[-2:]
-    #         # update real input shape of each single img
-    #         for img_meta in img_metas:
-    #             img_meta.update(input_shape=input_shape)
-
-    #         if img.dim() == 5 and img.size(0) == 1:
-    #             img.squeeze_(0)
-    #         elif img.dim() == 5 and img.size(0) > 1:
-    #             B, N, C, H, W = img.size()
-    #             img = img.view(B * N, C, H, W)
-    #         if self.use_grid_mask:
-    #             img = self.grid_mask(img)
-    #         img_feats = self.img_backbone(img.float())
-    #         if isinstance(img_feats, dict):
-    #             img_feats = list(img_feats.values())
-    #     else:
-    #         return None
-    #     if self.with_img_neck:
-    #         img_feats = self.img_neck(img_feats)
-    #     return img_feats
-
-    # # @force_fp32(apply_to=('pts', 'img_feats'))  # TODO: FP32 or FP16
-    # @auto_fp16(apply_to=('pts', 'img_feats'))
-    # def extract_pts_feat(self, pts, img_feats, img_metas):
-    #     """Extract features of points."""
-    #     if not self.with_pts_bbox:
-    #         return None
-    #     if pts is None:
-    #         return None
-    #     voxels, num_points, coors = self.voxelize(pts)
-    #     voxel_features = self.pts_voxel_encoder(voxels, num_points, coors,)
-    #     batch_size = coors[-1, 0] + 1
-    #     x = self.pts_middle_encoder(voxel_features, coors, batch_size)
-    #     x = self.pts_backbone(x)
-    #     if self.with_pts_neck:
-    #         x = self.pts_neck(x)
-    #     return x
-
-    # @torch.no_grad()
-    # @force_fp32()  # TODO: FP32 or FP16  # @auto_fp16()
-    # def voxelize(self, points):
-    #     """Apply dynamic voxelization to points.
-
-    #     Args:
-    #         points (list[torch.Tensor]): Points of each sample.
-
-    #     Returns:
-    #         tuple[torch.Tensor]: Concatenated points, number of points
-    #             per voxel, and coordinates.
-    #     """
-    #     voxels, coors, num_points = [], [], []
-    #     for res in points:
-    #         res_voxels, res_coors, res_num_points = self.pts_voxel_layer(res)
-    #         voxels.append(res_voxels)
-    #         coors.append(res_coors)
-    #         num_points.append(res_num_points)
-    #     voxels = torch.cat(voxels, dim=0)
-    #     num_points = torch.cat(num_points, dim=0)
-    #     coors_batch = []
-    #     for i, coor in enumerate(coors):
-    #         coor_pad = F.pad(coor, (1, 0), mode='constant', value=i)
-    #         coors_batch.append(coor_pad)
-    #     coors_batch = torch.cat(coors_batch, dim=0)
-    #     return voxels, num_points, coors_batch
-
-    def extract_imgs_queue_feat(self, img, len_queue=None):
-        """Extract features of images."""
-        if img is None:
-            return None
-        assert img.dim() == 5
-        B, N, C, H, W = img.size()
-        img = img.reshape(B * N, C, H, W)
-        if self.use_grid_mask:
-            img = self.grid_mask(img)
-        img_feats = self.img_backbone(img)
-        if isinstance(img_feats, dict):
-            img_feats = list(img_feats.values())
-        if self.with_img_neck:
-            img_feats = self.img_neck(img_feats)
-
-        img_feats_reshaped = []
-        for img_feat in img_feats:
-            _, c, h, w = img_feat.size()
-            if len_queue is not None:
-                img_feat_reshaped = img_feat.view(B//len_queue, len_queue, N, c, h, w)
-            else:
-                img_feat_reshaped = img_feat.view(B, N, c, h, w)
-            img_feats_reshaped.append(img_feat_reshaped)
-        return img_feats_reshaped
 
     def _generate_empty_tracks(self):
         track_instances = Instances((1, 1))
@@ -409,110 +307,51 @@ class FusionADTrack(CenterPoint):
 
         track_instances.save_period = copy.deepcopy(tgt_instances.save_period)
         return track_instances.to(device)
-
-    def get_history_bev(self, imgs_queue, img_metas_list):
-        """
-        Get history BEV features iteratively. To save GPU memory, gradients are not calculated.
-        """
-        self.eval()
-        with torch.no_grad():
-            prev_bev = None
-            bs, len_queue, num_cams, C, H, W = imgs_queue.shape
-            imgs_queue = imgs_queue.reshape(bs * len_queue, num_cams, C, H, W)
-            img_feats_list = self.extract_imgs_queue_feat(img=imgs_queue, len_queue=len_queue)
-            for i in range(len_queue):
-                img_metas = [each[i] for each in img_metas_list]
-                img_feats = [each_scale[:, i] for each_scale in img_feats_list]
-                prev_bev, _ = self.pts_bbox_head.get_bev_features(
-                    mlvl_feats=img_feats, 
-                    img_metas=img_metas, 
-                    prev_bev=prev_bev)
-        self.train()
-        return prev_bev
-
-    # Generate bev using bev_encoder in BEVFormer
-    def get_bevs(self, imgs, img_metas, prev_img=None, prev_img_metas=None, prev_bev=None):
-        if prev_img is not None and prev_img_metas is not None:
-            assert prev_bev is None
-            prev_bev = self.get_history_bev(prev_img, prev_img_metas)
-
-        img_feats = self.extract_imgs_queue_feat(img=imgs)
-        if self.freeze_bev_encoder:
-            with torch.no_grad():
-                bev_embed, bev_pos = self.pts_bbox_head.get_bev_features(
-                    mlvl_feats=img_feats, img_metas=img_metas, prev_bev=prev_bev)
-        else:
-            bev_embed, bev_pos = self.pts_bbox_head.get_bev_features(
-                    mlvl_feats=img_feats, img_metas=img_metas, prev_bev=prev_bev)
-        
-        if bev_embed.shape[1] == self.bev_h * self.bev_w:
-            bev_embed = bev_embed.permute(1, 0, 2)
-        
-        assert bev_embed.shape[0] == self.bev_h * self.bev_w
-        return bev_embed, bev_pos
-
-    # generate bev using vtransform and fusion layer in BEVFusion
-    def get_bevs_fusion(self, pts_feats, img_feats, img_metas, B=1, N=6):
-        # # debug
-        # for ifeat in img_feats:
-        #     print(ifeat.shape)
-        # TODO: which level?
-        img_feat = img_feats[self.vtransform_feat_level]
-        BN, C, H, W = img_feat.size()
-        img_feat = img_feat.view(B, int(BN / B), C, H, W)
-        dtype = img_feat.dtype
-        device = img_feat.device
-        camera_intrinsics = torch.tensor([img_meta['cam_intrinsic'] for img_meta in img_metas], dtype=dtype).to(device)
-        camera2lidar = torch.tensor([img_meta['cam2lidar'] for img_meta in img_metas], dtype=dtype).to(device)
-        # print(camera_intrinsics.shape)
-        # print(camera_intrinsics)
-        # print(camera2lidar.shape)
-        # exit()
-
-        # get bev pos
-        bev_pos = self.pts_bbox_head.get_bev_pos(dtype, B)
-
-        # sensor2ego:  torch.float32 torch.Size([1, 6, 4, 4])
-        # lidar2ego:  torch.float32 torch.Size([1, 4, 4])
-        # lidar2camera:  torch.float32 torch.Size([1, 6, 4, 4])
-        # lidar2image:  torch.float32 torch.Size([1, 6, 4, 4])
-        # cam_intrinsic:  torch.float32 torch.Size([1, 6, 4, 4])
-        # camera2lidar:  torch.float32 torch.Size([1, 6, 4, 4])
-        # img_aug_matrix:  torch.float32 torch.Size([1, 6, 4, 4])
-        # lidar_aug_matrix:  torch.float32 torch.Size([1, 4, 4])
-        # vtransform
-        vtransform_feat = self.vtransform(
-            img=img_feat,
-            points=None,
-            radar=None,
-            camera2ego=torch.zeros((4, 4)).expand(B, N, -1, -1).to(device),  # unused
-            lidar2ego=torch.zeros((4, 4)).expand(B, -1, -1).to(device),  # unused
-            lidar2camera=None,
-            lidar2image=None,
-            camera_intrinsics=camera_intrinsics,
-            camera2lidar=camera2lidar,
-            img_aug_matrix=torch.eye(4).expand(B, N, -1, -1).to(device),
-            lidar_aug_matrix=torch.eye(4).expand(B, -1, -1).to(device),
-            img_metas=img_metas,
-            depth_loss=None, 
-            gt_depths=None,
-        )
-        # # debug
-        # print('vtransform_feat: ', vtransform_feat.shape)
-
-        pts_feat = pts_feats[0]
-        B, C, H, W = vtransform_feat.shape
-        pts_feat = F.interpolate(pts_feat, size=(H, W), mode='bilinear')
-        fusion_feat = self.fusion_layer([pts_feat, vtransform_feat])
-        # # debug
-        # print('fusion_feat: ', fusion_feat.shape)
-
-        B, C, H, W = fusion_feat.shape
-        bev_embed = fusion_feat.permute(2, 3, 0, 1).contiguous().view(H * W, B, C)
-
-        return bev_embed, bev_pos
     
-    @auto_fp16(apply_to=("points", "img", "prev_bev"))
+    def extract_img_feat(self, img, img_metas):
+        """Extract features of images."""
+        B = img.size(0)
+        if img is not None:
+            input_shape = img.shape[-2:]
+            # update real input shape of each single img
+            for img_meta in img_metas:
+                img_meta.update(input_shape=input_shape)
+
+            if img.dim() == 5 and img.size(0) == 1:
+                img.squeeze_()
+            elif img.dim() == 5 and img.size(0) > 1:
+                B, N, C, H, W = img.size()
+                img = img.view(B * N, C, H, W)
+            if self.use_grid_mask:
+                img = self.grid_mask(img)
+            img_feats = self.img_backbone(img)
+            if isinstance(img_feats, dict):
+                img_feats = list(img_feats.values())
+        else:
+            return None
+        if self.with_img_neck:
+            img_feats = self.img_neck(img_feats)
+        img_feats_reshaped = []
+        for img_feat in img_feats:
+            BN, C, H, W = img_feat.size()
+            img_feats_reshaped.append(img_feat.view(B, int(BN / B), C, H, W))
+        return img_feats_reshaped
+
+    def extract_pts_feat(self, pts, img_feats, img_metas):
+        """Extract features of points."""
+        if not self.with_pts_bbox:
+            return None
+        voxels, num_points, coors = self.voxelize(pts)
+
+        voxel_features = self.pts_voxel_encoder(voxels, num_points, coors)
+        batch_size = coors[-1, 0] + 1
+        x = self.pts_middle_encoder(voxel_features, coors, batch_size)
+        x = self.pts_backbone(x)
+        if self.with_pts_neck:
+            x = self.pts_neck(x)
+        return x
+    
+    @auto_fp16(apply_to=("points", "img"))
     def _forward_single_frame_train(
         self,
         points,  # list of torch.Size([382144, 5])
@@ -553,12 +392,6 @@ class FusionADTrack(CenterPoint):
         # print(img_metas[0].keys())
         # # exit()
 
-        # # NOTE: You can replace BEVFormer with other BEV encoder and provide bev_embed here
-        # bev_embed, bev_pos = self.get_bevs(
-        #     img, img_metas,
-        #     prev_img=prev_img, prev_img_metas=prev_img_metas,
-        # )  # bev_embed: torch.Size([40000, 1, 256])
-
         # feature extract
         img_feats, pts_feats = self.extract_feat(points, img, img_metas)
         # # debug
@@ -570,20 +403,14 @@ class FusionADTrack(CenterPoint):
         # print('gt_labels_3d', gt_labels_3d.shape)
         # exit()
 
-        # get bev
-        # TODO: bev_pos unused?
-        bev_embed, bev_pos = self.get_bevs_fusion(pts_feats, img_feats, img_metas, B, N)
-        # # debug
-        # print('bev_embed: ', bev_embed.shape)
-        # print('bev_pos: ', bev_pos.shape)
-        # # print('track_instances.query: ')
-        # # print(track_instances.query.shape)
-        # # exit()
+        # ## debug
+        # print('track_instances.ref_pts: ', track_instances.ref_pts.shape)
 
-        det_output = self.pts_bbox_head.get_detections(
-            bev_embed,
-            object_query_embeds=track_instances.query,
-            ref_points=track_instances.ref_pts,
+        det_output = self.pts_bbox_head(
+            pts_feats[0],
+            img_feats,
+            query_embeds=track_instances.query,
+            reference_points=track_instances.ref_pts,
             img_metas=img_metas,
         )
 
@@ -594,7 +421,7 @@ class FusionADTrack(CenterPoint):
 
         output_classes = det_output["all_cls_scores"]
         output_coords = det_output["all_bbox_preds"]
-        output_past_trajs = det_output["all_past_traj_preds"]
+        # output_past_trajs = det_output["all_past_traj_preds"]
         last_ref_pts = det_output["last_ref_points"]
         query_feats = det_output["query_feats"]
 
@@ -607,10 +434,10 @@ class FusionADTrack(CenterPoint):
         out = {
             "pred_logits": output_classes[-1],
             "pred_boxes": output_coords[-1],
-            "pred_past_trajs": output_past_trajs[-1],
+            # "pred_past_trajs": output_past_trajs[-1],
             "ref_pts": last_ref_pts,
-            "bev_embed": bev_embed,
-            "bev_pos": bev_pos
+            "bev_embed": None,
+            "bev_pos": None
         }
         with torch.no_grad():
             track_scores = output_classes[-1, 0, :].sigmoid().max(dim=-1).values
@@ -651,7 +478,7 @@ class FusionADTrack(CenterPoint):
             track_instances.scores = track_scores
             track_instances.pred_logits = output_classes[i, 0]  # [300, num_cls]
             track_instances.pred_boxes = output_coords[i, 0]  # [300, box_dim]
-            track_instances.pred_past_trajs = output_past_trajs[i, 0]  # [300,past_steps, 2]
+            # track_instances.pred_past_trajs = output_past_trajs[i, 0]  # [300,past_steps, 2]
 
             out["track_instances"] = track_instances
             track_instances, matched_indices = self.criterion.match_for_single_frame(
@@ -891,17 +718,15 @@ class FusionADTrack(CenterPoint):
         track_instances = Instances.cat([other_inst, active_inst])
 
         B, N, C, H, W = img.size()
-        # # NOTE: You can replace BEVFormer with other BEV encoder and provide bev_embed here
-        # bev_embed, bev_pos = self.get_bevs(img, img_metas, prev_bev=prev_bev)
-        
-        # replace bev_embed by using bevfusion
+        # feature extract
         img_feats, pts_feats = self.extract_feat(points, img, img_metas)
-        bev_embed, bev_pos = self.get_bevs_fusion(pts_feats, img_feats, img_metas, B, N)
 
-        det_output = self.pts_bbox_head.get_detections(
-            bev_embed, 
-            object_query_embeds=track_instances.query,
-            ref_points=track_instances.ref_pts,
+        # det head
+        det_output = self.pts_bbox_head(
+            pts_feats[0],
+            img_feats,
+            query_embeds=track_instances.query,
+            reference_points=track_instances.ref_pts,
             img_metas=img_metas,
         )
         output_classes = det_output["all_cls_scores"]
@@ -913,10 +738,10 @@ class FusionADTrack(CenterPoint):
             "pred_logits": output_classes,
             "pred_boxes": output_coords,
             "ref_pts": last_ref_pts,
-            "bev_embed": bev_embed,
+            "bev_embed": None,
             "query_embeddings": query_feats,
-            "all_past_traj_preds": det_output["all_past_traj_preds"],
-            "bev_pos": bev_pos,
+            # "all_past_traj_preds": det_output["all_past_traj_preds"],
+            "bev_pos": None,
         }
 
         """ update track instances with predict results """

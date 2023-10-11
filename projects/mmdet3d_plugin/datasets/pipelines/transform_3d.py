@@ -6,7 +6,7 @@ from mmcv.parallel import DataContainer as DC
 from mmdet3d.datasets.pipelines.transforms_3d import ObjectRangeFilter, ObjectNameFilter
 from mmdet3d.core.bbox import CameraInstance3DBoxes, DepthInstance3DBoxes, LiDARInstance3DBoxes
 
-@PIPELINES.register_module()
+# @PIPELINES.register_module()
 class PadMultiViewImage(object):
     """Pad the multi-view image.
     There are two padding modes: (1) pad to a fixed size and (2) pad to the
@@ -60,7 +60,7 @@ class PadMultiViewImage(object):
         return repr_str
 
 
-@PIPELINES.register_module()
+# @PIPELINES.register_module()
 class NormalizeMultiviewImage(object):
     """Normalize the image.
     Added key is "img_norm_cfg".
@@ -97,7 +97,7 @@ class NormalizeMultiviewImage(object):
         return repr_str
 
 
-@PIPELINES.register_module()
+# @PIPELINES.register_module()
 class PhotoMetricDistortionMultiViewImage:
     """Apply photometric distortion to image sequentially, every transformation
     is applied with a probability of 0.5. The position of random contrast is in
@@ -286,7 +286,7 @@ class CustomCollect3D(object):
 
 
 
-@PIPELINES.register_module()
+# @PIPELINES.register_module()
 class RandomScaleImageMultiViewImage(object):
     """Random scale the image
     Args:
