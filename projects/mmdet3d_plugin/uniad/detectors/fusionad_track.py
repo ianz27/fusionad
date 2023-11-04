@@ -17,7 +17,7 @@ from mmdet3d.models.detectors import CenterPoint
 from projects.mmdet3d_plugin.models.utils.grid_mask import GridMask
 from projects.mmdet3d_plugin.mmcv_custom.ops.voxel import SPConvVoxelization
 from projects.mmdet3d_plugin.models.vtransforms import LSSTransform
-from mmdet3d.models.modules import ConvFuser
+# from mmdet3d.models.modules import ConvFuser
 import copy
 import math
 import numpy as np
@@ -86,6 +86,9 @@ class FusionADTrack(CenterPoint):
         freeze_img_neck=False,
         freeze_bn=False,
         freeze_bev_encoder=False,
+        freeze_pts_middle_encoder=False,
+        freeze_pts_backbone=False,
+        freeze_pts_neck=False,
         queue_length=3,
     ):
         super(FusionADTrack, self).__init__(
@@ -123,6 +126,24 @@ class FusionADTrack(CenterPoint):
             if freeze_bn:
                 self.img_neck.eval()
             for param in self.img_neck.parameters():
+                param.requires_grad = False
+
+        if freeze_pts_middle_encoder:
+            if freeze_bn:
+                self.pts_middle_encoder.eval()
+            for param in self.pts_middle_encoder.parameters():
+                param.requires_grad = False
+
+        if freeze_pts_backbone:
+            if freeze_bn:
+                self.pts_backbone.eval()
+            for param in self.pts_backbone.parameters():
+                param.requires_grad = False
+
+        if freeze_pts_neck:
+            if freeze_bn:
+                self.pts_neck.eval()
+            for param in self.pts_neck.parameters():
                 param.requires_grad = False
 
         # temporal

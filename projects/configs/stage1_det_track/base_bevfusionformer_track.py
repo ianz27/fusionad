@@ -15,17 +15,10 @@ plugin = True
 plugin_dir = "projects/mmdet3d_plugin/"
 # If point cloud range is changed, the models should also change their point
 # cloud range accordingly
-# point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
-# voxel_size = [0.2, 0.2, 8]
-# grid_size = [512, 512, 1]
-# out_size_factor = 4
 point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
-voxel_size = [0.1, 0.1, 0.2]
-grid_size = [1024, 1024, 40]
-out_size_factor = 8
-
+voxel_size = [0.2, 0.2, 8]
+grid_size = [512, 512, 1]
 patch_size = [102.4, 102.4]
-
 img_norm_cfg = dict(mean=[103.530, 116.280, 123.675], std=[1.0, 1.0, 1.0], to_rgb=False)
 # For nuScenes we usually do 10-class detection
 class_names = [
@@ -89,11 +82,11 @@ train_gt_iou_threshold=0.3
 model = dict(
     type='FusionAD',
     freeze_img_backbone=True,
-    freeze_img_neck=True,
+    freeze_img_neck=False,
     freeze_pts_middle_encoder=True,
-    freeze_pts_backbone=True,
-    freeze_pts_neck=True,
-    freeze_bn=True,
+    freeze_pts_backbone=False,
+    freeze_pts_neck=False,
+    freeze_bn=False,
     gt_iou_threshold=train_gt_iou_threshold,
     queue_length=queue_length,
     use_grid_mask=True,
@@ -249,13 +242,13 @@ model = dict(
         loss_bbox=dict(type='L1Loss', loss_weight=0.25),
         loss_iou=dict(type='GIoULoss', loss_weight=0.0)),
     # model training and testing settings
-    # TODO: same with det and test_cfg?
+    # TODO: test_cfg?
     train_cfg=dict(
         pts=dict(
             grid_size=grid_size,
             voxel_size=voxel_size,
             point_cloud_range=point_cloud_range,
-            out_size_factor=out_size_factor,
+            out_size_factor=4,
             assigner=dict(
                 type="HungarianAssigner3D",
                 cls_cost=dict(type="FocalLossCost", weight=2.0),
@@ -285,7 +278,6 @@ train_pipeline = [
         with_bbox_3d=True,
         with_label_3d=True,
         with_attr_label=False,
-
         with_future_anns=True,  # occ_flow gt
         with_ins_inds_3d=True,  # ins_inds 
         ins_inds_add_1=True,    # ins_inds start from 1
@@ -293,7 +285,6 @@ train_pipeline = [
     dict(type='PointsRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='GenerateOccFlowLabels', grid_conf=occflow_grid_conf, ignore_index=255, only_vehicle=True, 
                                     filter_invisible=False),  # NOTE: Currently vis_token is not in pkl 
-
     dict(type="ObjectRangeFilterTrack", point_cloud_range=point_cloud_range),
     dict(type="ObjectNameFilterTrack", classes=class_names),
     dict(type="NormalizeMultiviewImage", **img_norm_cfg),
@@ -336,7 +327,6 @@ test_pipeline = [
          with_bbox_3d=False,
          with_label_3d=False, 
          with_attr_label=False,
-
          with_future_anns=True,
          with_ins_inds_3d=False,
          ins_inds_add_1=True, # ins_inds start from 1
@@ -397,11 +387,10 @@ data = dict(
         past_steps=past_steps,
         fut_steps=fut_steps,
         use_nonlinear_optimizer=use_nonlinear_optimizer,
-
+        # occ
         occ_receptive_field=3,
         occ_n_future=occ_n_future_max,
         occ_filter_invalid_sample=False,
-
         # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
         # and box_type_3d='Depth' in sunrgbd and scannet dataset.
         box_type_3d="LiDAR",
@@ -423,7 +412,7 @@ data = dict(
         modality=input_modality,
         samples_per_gpu=1,
         eval_mod=['det', 'track'],  # ['det', 'track', 'map']
-
+        # occ
         occ_receptive_field=3,
         occ_n_future=occ_n_future_max,
         occ_filter_invalid_sample=False,
@@ -473,8 +462,8 @@ lr_config = dict(
     warmup_ratio=1.0 / 3,
     min_lr_ratio=1e-3,
 )
-total_epochs = 6
-evaluation = dict(interval=1, pipeline=test_pipeline)
+total_epochs = 12
+evaluation = dict(interval=12, pipeline=test_pipeline)
 runner = dict(type="EpochBasedRunner", max_epochs=total_epochs)
 
 checkpoint_config = dict(interval=1)
@@ -483,15 +472,13 @@ log_config = dict(
     interval=50,
     hooks=[
         dict(type='TextLoggerHook'),
-        dict(type="WandbLoggerHook")
+        # dict(type="WandbLoggerHook")
     ])
 # yapf:enable
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 work_dir = None
 load_from = '/home/zhangqiang/work/ad/fusionformer/work_dirs/base_fusion_test/fusion_epoch_12.pth'
-# load_from = '/home/zhangqiang/work/ad/fusionformer/pth/c_detr3d_r50_l_centerpoint.pth'
-# load_from = '/home/zhangqiang/work/ad/fusionformer/work_dirs/detr3d_r50/epoch_24.pth'
 resume_from = None
 workflow = [('train', 1)]
 
